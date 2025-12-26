@@ -7,9 +7,9 @@ import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BollettaElettrica } from '@/types/bill';
 
-// Configure PDF.js worker
+// Configure PDF.js worker - use local worker file from public folder
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 export interface ParsedBillData {
