@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import dynamic from 'next/dynamic';
 import { BollettaElettrica } from '@/types/bill';
 import { useBillStore } from '@/lib/store/bill-store';
 import { CostAnalysisService } from '@/lib/services/cost-analysis.service';
@@ -9,7 +10,16 @@ import { OptimizationService } from '@/lib/services/optimization.service';
 import { OfferComparisonService } from '@/lib/services/offer-comparison.service';
 import { AreraDataService } from '@/lib/services/arera-data.service';
 import { SAMPLE_BILLS } from '@/lib/sample-data';
-import BillUploader from './BillUploader';
+
+// Load BillUploader only on client side to avoid SSR issues with PDF.js
+const BillUploader = dynamic(() => import('./BillUploader'), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center">
+      <p className="text-gray-500">Caricamento componente upload...</p>
+    </div>
+  ),
+});
 
 const FORM_STEPS = [
   { id: 1, title: 'Dati Cliente', icon: '👤' },

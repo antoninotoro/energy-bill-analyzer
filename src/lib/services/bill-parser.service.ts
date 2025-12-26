@@ -4,7 +4,13 @@
  */
 
 import Tesseract from 'tesseract.js';
+import * as pdfjsLib from 'pdfjs-dist';
 import { BollettaElettrica } from '@/types/bill';
+
+// Configure PDF.js worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+}
 
 export interface ParsedBillData {
   success: boolean;
@@ -57,14 +63,6 @@ export class BillParserService {
    * Extract text from PDF
    */
   private static async extractTextFromPDF(file: File): Promise<string> {
-    // Dynamic import to avoid SSR issues
-    const pdfjsLib = await import('pdfjs-dist');
-
-    // Configure worker
-    if (typeof window !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-    }
-
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
