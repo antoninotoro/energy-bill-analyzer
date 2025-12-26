@@ -7,11 +7,6 @@ import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import { BollettaElettrica } from '@/types/bill';
 
-// Configure PDF.js worker - use local worker file from public folder
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-}
-
 export interface ParsedBillData {
   success: boolean;
   data?: Partial<BollettaElettrica>;
@@ -63,6 +58,10 @@ export class BillParserService {
    * Extract text from PDF
    */
   private static async extractTextFromPDF(file: File): Promise<string> {
+    // IMPORTANT: Set worker path before any PDF.js operations
+    // Use local worker file from public folder to avoid CDN issues
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
