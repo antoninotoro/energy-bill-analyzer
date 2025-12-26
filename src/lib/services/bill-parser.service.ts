@@ -124,7 +124,7 @@ export class BillParserService {
     // Extract total consumption
     const consumoMatch = text.match(/(?:consumo|energia\s*consumata|totale\s*kwh)[:\s]*(\d+[.,]?\d*)\s*kwh/i);
     if (consumoMatch) {
-      const totalKwh = parseFloat(consumoMatch[1].replace(',', '.'));
+      const totalKwh = this.parseItalianNumber(consumoMatch[1]);
       data.Consumi_Fatturati = {
         ...data.Consumi_Fatturati,
         Totale_kWh: totalKwh,
@@ -139,9 +139,9 @@ export class BillParserService {
     if (f1Match || f2Match || f3Match) {
       data.Consumi_Fatturati = {
         ...data.Consumi_Fatturati,
-        Fascia_F1_kWh: f1Match ? parseFloat(f1Match[1].replace(',', '.')) : 0,
-        Fascia_F2_kWh: f2Match ? parseFloat(f2Match[1].replace(',', '.')) : 0,
-        Fascia_F3_kWh: f3Match ? parseFloat(f3Match[1].replace(',', '.')) : 0,
+        Fascia_F1_kWh: f1Match ? this.parseItalianNumber(f1Match[1]) : 0,
+        Fascia_F2_kWh: f2Match ? this.parseItalianNumber(f2Match[1]) : 0,
+        Fascia_F3_kWh: f3Match ? this.parseItalianNumber(f3Match[1]) : 0,
       } as any;
     }
 
@@ -150,14 +150,14 @@ export class BillParserService {
     if (powerMatch) {
       data.Fornitura = {
         ...data.Fornitura,
-        Potenza_Contrattuale_kW: parseFloat(powerMatch[1].replace(',', '.')),
+        Potenza_Contrattuale_kW: this.parseItalianNumber(powerMatch[1]),
       } as any;
     }
 
     // Extract total cost
     const totalCostMatch = text.match(/(?:totale\s*fattura|importo\s*totale|da\s*pagare)[:\s]*€?\s*(\d+[.,]\d{2})/i);
     if (totalCostMatch) {
-      const totalCost = parseFloat(totalCostMatch[1].replace(',', '.'));
+      const totalCost = this.parseItalianNumber(totalCostMatch[1]);
       data.Dettaglio_Costi = {
         ...data.Dettaglio_Costi,
         Spesa_Materia_Energia: {
@@ -169,7 +169,7 @@ export class BillParserService {
     // Extract energy cost
     const energyCostMatch = text.match(/(?:spesa\s*(?:per\s*)?(?:la\s*)?materia\s*energia)[:\s]*€?\s*(\d+[.,]\d{2})/i);
     if (energyCostMatch) {
-      const energyCost = parseFloat(energyCostMatch[1].replace(',', '.'));
+      const energyCost = this.parseItalianNumber(energyCostMatch[1]);
       data.Dettaglio_Costi = {
         ...data.Dettaglio_Costi,
         Spesa_Materia_Energia: {
@@ -182,7 +182,7 @@ export class BillParserService {
     // Extract transport cost
     const transportCostMatch = text.match(/(?:spesa\s*(?:per\s*)?trasporto)[:\s]*€?\s*(\d+[.,]\d{2})/i);
     if (transportCostMatch) {
-      const transportCost = parseFloat(transportCostMatch[1].replace(',', '.'));
+      const transportCost = this.parseItalianNumber(transportCostMatch[1]);
       data.Dettaglio_Costi = {
         ...data.Dettaglio_Costi,
         Spesa_Trasporto_Gestione_Contatore: {
@@ -194,7 +194,7 @@ export class BillParserService {
     // Extract system charges
     const systemChargesMatch = text.match(/(?:oneri\s*(?:di\s*)?sistema)[:\s]*€?\s*(\d+[.,]\d{2})/i);
     if (systemChargesMatch) {
-      const systemCharges = parseFloat(systemChargesMatch[1].replace(',', '.'));
+      const systemCharges = this.parseItalianNumber(systemChargesMatch[1]);
       data.Dettaglio_Costi = {
         ...data.Dettaglio_Costi,
         Spesa_Oneri_Sistema: {
@@ -206,7 +206,7 @@ export class BillParserService {
     // Extract taxes
     const taxesMatch = text.match(/(?:imposte|iva)[:\s]*€?\s*(\d+[.,]\d{2})/i);
     if (taxesMatch) {
-      const taxes = parseFloat(taxesMatch[1].replace(',', '.'));
+      const taxes = this.parseItalianNumber(taxesMatch[1]);
       data.Dettaglio_Costi = {
         ...data.Dettaglio_Costi,
         Imposte: {
@@ -268,6 +268,21 @@ export class BillParserService {
     }
 
     return dateStr;
+  }
+
+  /**
+   * Parse Italian number format to float
+   * Italian format: 1.234,56 (dot for thousands, comma for decimals)
+   * @example parseItalianNumber("1.234,56") => 1234.56
+   * @example parseItalianNumber("280,5") => 280.5
+   * @example parseItalianNumber("280") => 280
+   */
+  private static parseItalianNumber(numberStr: string): number {
+    // Remove thousand separators (dots)
+    const withoutThousands = numberStr.replace(/\./g, '');
+    // Replace decimal comma with dot
+    const normalized = withoutThousands.replace(',', '.');
+    return parseFloat(normalized);
   }
 
   /**
