@@ -9,6 +9,7 @@ import { OptimizationService } from '@/lib/services/optimization.service';
 import { OfferComparisonService } from '@/lib/services/offer-comparison.service';
 import { AreraDataService } from '@/lib/services/arera-data.service';
 import { SAMPLE_BILLS } from '@/lib/sample-data';
+import BillUploader from './BillUploader';
 
 const FORM_STEPS = [
   { id: 1, title: 'Dati Cliente', icon: '👤' },
@@ -42,6 +43,48 @@ export default function BillInputForm() {
   const loadSampleData = (sampleKey: keyof typeof SAMPLE_BILLS) => {
     const sampleData = SAMPLE_BILLS[sampleKey];
     resetForm(sampleData);
+    setCurrentStep(1);
+  };
+
+  const handleExtractedData = (extractedData: Partial<BollettaElettrica>) => {
+    // Merge extracted data with current form data
+    resetForm((prev) => ({
+      ...prev,
+      ...extractedData,
+      // Deep merge nested objects
+      Cliente: { ...prev?.Cliente, ...extractedData.Cliente },
+      Fornitura: { ...prev?.Fornitura, ...extractedData.Fornitura },
+      Consumi_Fatturati: {
+        ...prev?.Consumi_Fatturati,
+        ...extractedData.Consumi_Fatturati,
+      },
+      Dettaglio_Costi: {
+        ...prev?.Dettaglio_Costi,
+        ...extractedData.Dettaglio_Costi,
+        Spesa_Materia_Energia: {
+          ...prev?.Dettaglio_Costi?.Spesa_Materia_Energia,
+          ...extractedData.Dettaglio_Costi?.Spesa_Materia_Energia,
+        },
+        Spesa_Trasporto_Gestione_Contatore: {
+          ...prev?.Dettaglio_Costi?.Spesa_Trasporto_Gestione_Contatore,
+          ...extractedData.Dettaglio_Costi?.Spesa_Trasporto_Gestione_Contatore,
+        },
+        Spesa_Oneri_Sistema: {
+          ...prev?.Dettaglio_Costi?.Spesa_Oneri_Sistema,
+          ...extractedData.Dettaglio_Costi?.Spesa_Oneri_Sistema,
+        },
+        Imposte: {
+          ...prev?.Dettaglio_Costi?.Imposte,
+          ...extractedData.Dettaglio_Costi?.Imposte,
+        },
+      },
+      Autoproduzione: {
+        ...prev?.Autoproduzione,
+        ...extractedData.Autoproduzione,
+      },
+    } as BollettaElettrica));
+
+    // Go to first step to review data
     setCurrentStep(1);
   };
 
@@ -141,10 +184,15 @@ export default function BillInputForm() {
         </div>
       </div>
 
+      {/* Bill Uploader */}
+      <div className="mb-8">
+        <BillUploader onDataExtracted={handleExtractedData} />
+      </div>
+
       {/* Sample Data Loader */}
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <p className="text-sm font-medium text-blue-900 mb-3">
-          🚀 Prova rapida: Carica dati di esempio
+      <div className="mb-6 p-4 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl">
+        <p className="text-sm font-semibold text-indigo-900 mb-3">
+          🚀 Oppure prova con dati di esempio
         </p>
         <div className="flex flex-wrap gap-2">
           {Object.keys(SAMPLE_BILLS).map((key) => (
@@ -152,7 +200,7 @@ export default function BillInputForm() {
               key={key}
               type="button"
               onClick={() => loadSampleData(key as keyof typeof SAMPLE_BILLS)}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-sm rounded-lg hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-300"
             >
               {key}
             </button>
