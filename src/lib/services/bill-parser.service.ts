@@ -148,7 +148,11 @@ export class BillParserService {
 
     // ===== CUSTOMER TYPE =====
     const normalizedText = text.toLowerCase();
-    if (normalizedText.includes('domestico') && normalizedText.includes('residente')) {
+
+    // Check for "Altri Usi" (industrial/commercial) - EXACT from QUIDAM bill
+    if (normalizedText.match(/uso\s+altri\s+usi/i) || normalizedText.includes('altri usi')) {
+      clientData.Tipologia_Cliente = 'Altri_Usi'; // Industrial/Commercial
+    } else if (normalizedText.includes('domestico') && normalizedText.includes('residente')) {
       clientData.Tipologia_Cliente = 'Domestico_Residente';
     } else if (normalizedText.includes('domestico') && normalizedText.includes('non residente')) {
       clientData.Tipologia_Cliente = 'Domestico_Non_Residente';
@@ -176,10 +180,14 @@ export class BillParserService {
 
     // ===== CONTRACTED POWER =====
     const powerPatterns = [
+      // EXACT pattern from QUIDAM bill: "potenza disponibile 1.099 kW"
+      /potenza\s+disponibile\s+(\d+[.,]?\d*)\s*kw/i,
+
+      // Common variations
       /(?:potenza\s*(?:impegnata|contrattuale|disponibile|nominale))[:\s]*(\d+[.,]?\d*)\s*kw/i,
       /(?:potenza)[:\s]*(\d+[.,]?\d*)\s*kw/i,
       /kw\s*(?:impegnati|contrattuali)[:\s]*(\d+[.,]?\d*)/i,
-      /(\d+[.,]?\d*)\s*kw\s*(?:impegnata|contrattuale)/i,
+      /(\d+[.,]?\d*)\s*kw\s*(?:impegnata|contrattuale|disponibile)/i,
     ];
 
     for (const pattern of powerPatterns) {
@@ -210,6 +218,8 @@ export class BillParserService {
 
     // ===== BILLING PERIOD =====
     const periodPatterns = [
+      // EXACT pattern from QUIDAM bill: "periodo riferimento 31/07/2025-31/08/2025"
+      /periodo\s+riferimento\s+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})[–\-](\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /(?:periodo|dal|fatturazione|competenza)[:\s]*(?:dal\s*)?(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}).*?(?:al|fino|a)[:\s]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
       /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\s*[–\-]\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/,
       /dal\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\s*al\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
@@ -228,46 +238,56 @@ export class BillParserService {
     }
 
     // ===== TOTAL CONSUMPTION =====
-    // Try 30+ patterns for total consumption
+    // CRITICAL: Try patterns in ORDER of specificity (most specific first!)
     const totalConsumptionPatterns = [
-      // Pattern with label before number
-      /(?:consumo|energia\s*consumata|totale\s*kwh|energia\s*attiva|totale\s*energia)[:\s]*(\d+[.,]?\d*)\s*kwh/i,
+      // EXACT pattern from QUIDAM bill: "TOTALE ENERGIA 30.673 kWh"
+      /TOTALE\s+ENERGIA\s+(\d+[.,]?\d*)\s*kWh/i,
+
+      // Common variations
+      /(?:totale\s+energia|energia\s+totale)[:\s]*(\d+[.,]?\d*)\s*kwh/i,
+      /(?:consumo\s+totale|totale\s+consumo)[:\s]*(\d+[.,]?\d*)\s*kwh/i,
+      /(?:energia\s*consumata|consumo)[:\s]*(\d+[.,]?\d*)\s*kwh/i,
+      /(?:totale\s*kwh)[:\s]*(\d+[.,]?\d*)\s*kwh/i,
+      /energia\s*attiva[:\s]*(\d+[.,]?\d*)\s*kwh/i,
+
+      // Generic patterns (less specific)
       /(?:totale|tot\.?)[:\s]*(\d+[.,]?\d*)\s*kwh/i,
       /energia[:\s]*(\d+[.,]?\d*)\s*kwh/i,
-
-      // Pattern with kWh before number
-      /kwh[:\s]*(\d+[.,]?\d*)/i,
-
-      // Pattern in tables
-      /consumo.*?(\d+[.,]?\d*)\s*kwh/i,
-
-      // Very aggressive: any number followed by kWh with context
-      /(\d+[.,]?\d*)\s*kwh/i,
     ];
 
-    // Try to find the LARGEST kWh value (most likely the total)
-    let maxConsumption = 0;
-    let foundTotal = false;
-
+    // Try patterns in order - STOP at first match of reasonable size
     for (const pattern of totalConsumptionPatterns) {
-      const matches = text.matchAll(new RegExp(pattern.source, 'gi'));
-      for (const match of matches) {
-        if (match[1]) {
-          const value = this.parseItalianNumber(match[1]);
-          // Total consumption usually between 50-10000 kWh
-          if (value > 10 && value < 50000) {
-            if (value > maxConsumption) {
-              maxConsumption = value;
-              foundTotal = true;
-            }
-          }
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        const value = this.parseItalianNumber(match[1]);
+        // Total consumption usually between 10 kWh and 100,000 kWh
+        if (value >= 10 && value <= 100000) {
+          consumptionData.Totale_kWh = value;
+          console.log(`Total consumption found: ${value} kWh (pattern matched)`);
+          break; // STOP at first valid match
         }
       }
     }
 
-    if (foundTotal) {
-      consumptionData.Totale_kWh = maxConsumption;
-      console.log(`Total consumption found: ${maxConsumption} kWh`);
+    // FALLBACK: If no total found, try to find the LARGEST kWh value
+    if (!consumptionData.Totale_kWh) {
+      let maxConsumption = 0;
+      const allKwhPattern = /(\d+[.,]?\d*)\s*kwh/gi;
+      const matches = text.matchAll(allKwhPattern);
+
+      for (const match of matches) {
+        if (match[1]) {
+          const value = this.parseItalianNumber(match[1]);
+          if (value >= 10 && value <= 100000 && value > maxConsumption) {
+            maxConsumption = value;
+          }
+        }
+      }
+
+      if (maxConsumption > 0) {
+        consumptionData.Totale_kWh = maxConsumption;
+        console.log(`Total consumption found (largest value): ${maxConsumption} kWh`);
+      }
     }
 
     // ===== TIME SLOT CONSUMPTION (F1, F2, F3) =====
@@ -337,7 +357,11 @@ export class BillParserService {
 
     // ===== ENERGY COST =====
     const energyCostPatterns = [
-      /(?:spesa\s*(?:per\s*)?(?:la\s*)?materia\s*energia|materia\s*prima|energia)[:\s]*€?\s*(\d+[.,]\d{1,2})/i,
+      // EXACT pattern from QUIDAM bill: "materia energia 4.651,71 €"
+      /materia\s+energia\s+(\d+[.,]\d{1,2})\s*€/i,
+
+      // Common variations
+      /(?:spesa\s*(?:per\s*)?(?:la\s*)?materia\s*energia|materia\s*prima)[:\s]*€?\s*(\d+[.,]\d{1,2})/i,
       /materia\s*energia.*?€?\s*(\d+[.,]\d{1,2})/i,
       /energia.*?€\s*(\d+[.,]\d{1,2})/i,
     ];
@@ -354,6 +378,12 @@ export class BillParserService {
 
     // ===== TRANSPORT COST =====
     const transportPatterns = [
+      // EXACT from QUIDAM: "trasporto e gestione del contatore e oneri di sistema 2.661,15 €"
+      // But we want just transport part: "di cui trasporto e gestione: 2190,62 €"
+      /di\s+cui\s+trasporto\s+e\s+gestione[:\s]*(\d+[.,]\d{1,2})\s*€/i,
+
+      // Fallback patterns
+      /(?:trasporto\s+e\s+gestione\s+del\s+contatore)[:\s]*€?\s*(\d+[.,]\d{1,2})/i,
       /(?:spesa\s*(?:per\s*)?trasporto|trasporto\s*e\s*gestione|rete)[:\s]*€?\s*(\d+[.,]\d{1,2})/i,
       /trasporto.*?€\s*(\d+[.,]\d{1,2})/i,
     ];
@@ -370,6 +400,10 @@ export class BillParserService {
 
     // ===== SYSTEM CHARGES =====
     const systemChargesPatterns = [
+      // EXACT from QUIDAM: "di cui oneri di sistema: 470,53 €"
+      /di\s+cui\s+oneri\s+di\s+sistema[:\s]*(\d+[.,]\d{1,2})\s*€/i,
+
+      // Fallback patterns
       /(?:oneri\s*(?:di\s*)?sistema|oneri\s*generali)[:\s]*€?\s*(\d+[.,]\d{1,2})/i,
       /oneri.*?€\s*(\d+[.,]\d{1,2})/i,
     ];
@@ -402,6 +436,11 @@ export class BillParserService {
 
     // ===== TOTAL BILL =====
     const totalPatterns = [
+      // EXACT from QUIDAM: "Totale da pagare entro il 15/09/2025 € 8.465,90"
+      /totale\s+da\s+pagare.*?€\s*(\d+[.,]\d{1,2})/i,
+      /TOTALE\s+IMPORTI\s+(\d+[.,]\d{1,2})\s*€/i,
+
+      // Common variations
       /(?:totale\s*fattura|importo\s*totale|totale\s*da\s*pagare|da\s*pagare)[:\s]*€?\s*(\d+[.,]\d{1,2})/i,
       /totale.*?€\s*(\d+[.,]\d{1,2})/i,
       /€\s*(\d+[.,]\d{1,2}).*?totale/i,
