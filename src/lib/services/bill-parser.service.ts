@@ -147,26 +147,70 @@ export class BillParserService {
     }
 
     // ===== CUSTOMER TYPE =====
+    // Types in Italy: Domestico Residente, Domestico Non Residente, Altri Usi, Illuminazione Pubblica
     const normalizedText = text.toLowerCase();
 
-    // Check for "Altri Usi" (industrial/commercial) - EXACT from QUIDAM bill
-    if (normalizedText.match(/uso\s+altri\s+usi/i) || normalizedText.includes('altri usi')) {
-      clientData.Tipologia_Cliente = 'Altri_Usi'; // Industrial/Commercial
-    } else if (normalizedText.includes('domestico') && normalizedText.includes('residente')) {
+    // Check for NON-DOMESTIC first (most specific)
+    if (normalizedText.match(/uso\s+altri\s+usi/i) ||
+        normalizedText.match(/altri\s+usi/i) ||
+        normalizedText.match(/attivit[àa]\s+(?:commerciale|industriale|produttiva)/i) ||
+        normalizedText.match(/uso\s+(?:commerciale|industriale|professionale|artigianale)/i)) {
+      clientData.Tipologia_Cliente = 'Altro'; // Commercial/Industrial/Professional
+      console.log('Customer type: Altri Usi (Commercial/Industrial)');
+    }
+    // Check for public lighting
+    else if (normalizedText.match(/illuminazione\s+pubblica/i) ||
+             normalizedText.match(/pubblica\s+illuminazione/i)) {
+      clientData.Tipologia_Cliente = 'Altro'; // Public lighting
+      console.log('Customer type: Illuminazione Pubblica');
+    }
+    // Check for domestic types
+    else if (normalizedText.match(/domestico.*residente/i) ||
+             normalizedText.match(/uso\s+domestico\s+residente/i)) {
       clientData.Tipologia_Cliente = 'Domestico_Residente';
-    } else if (normalizedText.includes('domestico') && normalizedText.includes('non residente')) {
+      console.log('Customer type: Domestico Residente');
+    }
+    else if (normalizedText.match(/domestico.*non\s+residente/i) ||
+             normalizedText.match(/uso\s+domestico\s+non\s+residente/i) ||
+             normalizedText.match(/seconda\s+casa/i)) {
       clientData.Tipologia_Cliente = 'Domestico_Non_Residente';
-    } else if (normalizedText.includes('domestico')) {
-      clientData.Tipologia_Cliente = 'Domestico_Residente';
+      console.log('Customer type: Domestico Non Residente');
+    }
+    else if (normalizedText.includes('domestico')) {
+      clientData.Tipologia_Cliente = 'Domestico_Residente'; // Default to residente
+      console.log('Customer type: Domestico (assumed Residente)');
     }
 
-    // ===== METER TYPE =====
-    if (normalizedText.match(/(?:bi[\s-]?oraria|bioraria|2\s*fasce)/)) {
-      clientData.Fascia_Oraria_Contatore = 'Bioraria';
-    } else if (normalizedText.match(/(?:tri[\s-]?oraria|trioraria|multi[\s-]?oraria|3\s*fasce)/)) {
+    // ===== METER TYPE / TARIFF STRUCTURE =====
+    // Types: Monoraria (single rate), Bioraria (F1+F23), Multioraria/Trioraria (F1+F2+F3)
+
+    // Check if bill has F1, F2, F3 consumption data (most reliable)
+    const hasF1 = /fascia\s*f?1[:\s]/i.test(text);
+    const hasF2 = /fascia\s*f?2[:\s]/i.test(text);
+    const hasF3 = /fascia\s*f?3[:\s]/i.test(text);
+
+    if (hasF1 && hasF2 && hasF3) {
       clientData.Fascia_Oraria_Contatore = 'Multioraria';
-    } else if (normalizedText.match(/(?:mono[\s-]?oraria|monoraria|1\s*fascia|fascia\s*unica)/)) {
+      console.log('Meter type: Multioraria (F1+F2+F3) - detected from consumption data');
+    } else if ((hasF1 && hasF2) || (hasF1 && hasF3)) {
+      clientData.Fascia_Oraria_Contatore = 'Bioraria';
+      console.log('Meter type: Bioraria (2 time slots) - detected from consumption data');
+    }
+    // Fallback to text patterns
+    else if (normalizedText.match(/(?:tri[\s-]?oraria|trioraria|multi[\s-]?oraria|3\s*fasce)/)) {
+      clientData.Fascia_Oraria_Contatore = 'Multioraria';
+      console.log('Meter type: Multioraria (from text)');
+    } else if (normalizedText.match(/(?:bi[\s-]?oraria|bioraria|2\s*fasce)/)) {
+      clientData.Fascia_Oraria_Contatore = 'Bioraria';
+      console.log('Meter type: Bioraria (from text)');
+    } else if (normalizedText.match(/(?:mono[\s-]?oraria|monoraria|1\s*fascia|fascia\s*unica|tariffa\s*unica)/)) {
       clientData.Fascia_Oraria_Contatore = 'Monoraria';
+      console.log('Meter type: Monoraria (from text)');
+    }
+    // If only F1 or no time slot info, assume Monoraria
+    else if (hasF1 && !hasF2 && !hasF3) {
+      clientData.Fascia_Oraria_Contatore = 'Monoraria';
+      console.log('Meter type: Monoraria (only F1 detected)');
     }
 
     return clientData;
